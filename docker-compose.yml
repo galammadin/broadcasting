@@ -19,12 +19,12 @@ services:
       - ./nginx/http.conf:/etc/nginx/templates/http.conf.template
       - ./nginx/index.html:/usr/share/nginx/html/index.html
     
-  # ffmpeg:
-  #   image: ffmpeg-i
-  #   container_name: ${FFMPEG_HOST}
-  #   build:
-  #     context: ./ffmpeg
-  #     dockerfile: Dockerfile
-  #   env_file: .env
-  #   depends_on:
-  #     - nginx
+  ffmpeg:
+    image: ffmpeg-i
+    container_name: ${FFMPEG_HOST}
+    build:
+      context: ./ffmpeg
+      dockerfile: Dockerfile
+    env_file: .env
+    depends_on:
+      - nginx
