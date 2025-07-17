@@ -10,6 +10,7 @@ services:
         ENABLED_MODULES: rtmp
     env_file: .env
     ports:
+      - "80:80"
       - ${HTTP_PORT}:${HTTP_PORT}
       - ${RTMP_PORT}:${RTMP_PORT}
     volumes:
