@@ -1,17 +1,173 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Live Streaming</title>
-        <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet">
-    </head>
-    <body>
-        <video id="player" class="video-js vjs-default-skin" height="360" width="640" controls autoplay muted>
-            <source src="http://13.60.228.20:5555/hls/my-video.m3u8" type="application/x-mpegURL" />
-        </video>
-        <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
-        <script>
-            videojs('#player');
-        </script>
-    </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Audio Streaming Platform</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .header {
+            margin-bottom: 40px;
+        }
+        .create-room-form {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .btn {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #45a049;
+        }
+        .room-details {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            margin-top: 20px;
+            display: none;
+        }
+        .qr-code {
+            margin: 20px 0;
+        }
+        .qr-code img {
+            max-width: 200px;
+            border-radius: 10px;
+            background: white;
+            padding: 10px;
+        }
+        .room-info {
+            text-align: left;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Live Audio Streaming Platform</h1>
+            <p>Create rooms and share live audio streams with your audience</p>
+        </div>
+
+        <div class="create-room-form">
+            <h2>Create New Room</h2>
+            <div class="form-group">
+                <input type="text" id="roomTitle" placeholder="Room Title (e.g., 'My Podcast')" required>
+            </div>
+            <button class="btn" onclick="createRoom()">Create Room</button>
+        </div>
+
+        <div id="roomDetails" class="room-details">
+            <h3>Room Created Successfully! 🎉</h3>
+            <div id="roomInfo"></div>
+            <div class="qr-code">
+                <h4>QR Code for Viewers:</h4>
+                <img id="qrCodeImg" src="" alt="QR Code">
+                <p><small>Viewers can scan this QR code to join your stream</small></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Create a new streaming room
+        async function createRoom() {
+            const title = document.getElementById('roomTitle').value.trim();
+            if (!title) {
+                alert('Please enter a room title');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/rooms', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title: title })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to create room');
+                }
+
+                const room = await response.json();
+                displayRoomDetails(room);
+            } catch (error) {
+                console.error('Error creating room:', error);
+                alert('Error creating room. Please try again.');
+            }
+        }
+
+        // Display room details after creation
+        function displayRoomDetails(room) {
+            const roomInfo = document.getElementById('roomInfo');
+            const qrCodeImg = document.getElementById('qrCodeImg');
+            const roomDetails = document.getElementById('roomDetails');
+
+            roomInfo.innerHTML = `
+                <div class="room-info">
+                    <strong>Room ID:</strong> ${room.room_id}
+                </div>
+                <div class="room-info">
+                    <strong>Room Title:</strong> ${room.title}
+                </div>
+                <div class="room-info">
+                    <strong>RTMP URL (for OBS):</strong><br>
+                    <code>${room.rtmp_url}</code>
+                </div>
+                <div class="room-info">
+                    <strong>Viewer URL:</strong><br>
+                    <a href="${room.viewer_url}" target="_blank" style="color: #4CAF50;">${room.viewer_url}</a>
+                </div>
+                <div class="room-info">
+                    <strong>Stream Key (for OBS):</strong><br>
+                    <code>${room.stream_key}</code>
+                </div>
+            `;
+
+            qrCodeImg.src = room.qr_code;
+            roomDetails.style.display = 'block';
+
+            // Clear the form
+            document.getElementById('roomTitle').value = '';
+        }
+    </script>
+</body>
 </html>

@@ -76,4 +76,8 @@ RUN --mount=type=bind,target=/tmp/packages/,source=/tmp/packages/,from=builder \
     && for module in $BUILT_MODULES; do \
            apt-get install --no-install-suggests --no-install-recommends -y /tmp/packages/nginx-module-${module}_${NGINX_VERSION}*.deb; \
        done \
-    && rm -rf /var/lib/apt/lists/
+    && rm -rf /var/lib/apt/lists/ \
+    && mkdir -p /etc/ssl/certs /etc/ssl/private \
+    && chown root:root /etc/ssl/certs /etc/ssl/private \
+    && chmod 755 /etc/ssl/certs \
+    && chmod 700 /etc/ssl/private

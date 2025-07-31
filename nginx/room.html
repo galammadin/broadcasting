@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Audio Stream</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .player-container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        .room-title {
+            font-size: 2em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        .status {
+            margin-bottom: 30px;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+        .status.live {
+            background: rgba(76, 175, 80, 0.3);
+            color: #4CAF50;
+        }
+        .status.offline {
+            background: rgba(244, 67, 54, 0.3);
+            color: #f44336;
+        }
+        .audio-player {
+            width: 100%;
+            max-width: 500px;
+            margin: 20px auto;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+        .audio-controls {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        .play-btn {
+            background: #4CAF50;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .play-btn:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+        .play-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .volume-slider {
+            width: 100px;
+            height: 5px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            outline: none;
+            -webkit-appearance: none;
+        }
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+        .error-message {
+            background: rgba(244, 67, 54, 0.3);
+            color: #f44336;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+        .loading {
+            display: none;
+            margin: 20px 0;
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <h1 class="room-title" id="roomTitle">Loading...</h1>
+        <div class="status" id="streamStatus">
+            <span id="statusText">Checking stream status...</span>
+        </div>
+        
+        <div class="audio-player">
+            <audio id="audioPlayer" preload="none" style="display: none;"></audio>
+            <div class="audio-controls">
+                <button class="play-btn" id="playBtn" disabled>
+                    <span id="playIcon">▶</span>
+                </button>
+                <div class="volume-control">
+                    <span>🔊</span>
+                    <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.1" value="0.8">
+                </div>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading stream...</p>
+        </div>
+        
+        <div class="error-message" id="errorMessage"></div>
+    </div>
+
+    <!-- HLS.js library for HTTP Live Streaming support -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.12/dist/hls.min.js"></script>
+    
+    <script>
+        class AudioStreamPlayer {
+            constructor() {
+                this.audioPlayer = document.getElementById('audioPlayer');
+                this.playBtn = document.getElementById('playBtn');
+                this.playIcon = document.getElementById('playIcon');
+                this.volumeSlider = document.getElementById('volumeSlider');
+                this.statusElement = document.getElementById('streamStatus');
+                this.statusText = document.getElementById('statusText');
+                this.roomTitle = document.getElementById('roomTitle');
+                this.errorMessage = document.getElementById('errorMessage');
+                this.loading = document.getElementById('loading');
+                
+                this.hls = null;
+                this.isPlaying = false;
+                this.roomId = this.getRoomIdFromUrl();
+                
+                this.init();
+            }
+            
+            // Extract room ID from URL path
+            getRoomIdFromUrl() {
+                const path = window.location.pathname;
+                const match = path.match(/\/room\/([a-zA-Z0-9-]+)/);
+                return match ? match[1] : null;
+            }
+            
+            async init() {
+                if (!this.roomId) {
+                    this.showError('Invalid room URL');
+                    return;
+                }
+                
+                this.setupEventListeners();
+                await this.loadRoomData();
+                this.checkStreamStatus();
+                
+                // Check stream status every 10 seconds
+                setInterval(() => this.checkStreamStatus(), 10000);
+            }
+            
+            setupEventListeners() {
+                this.playBtn.addEventListener('click', () => this.togglePlay());
+                this.volumeSlider.addEventListener('input', (e) => {
+                    this.audioPlayer.volume = e.target.value;
+                });
+                
+                // Audio player events
+                this.audioPlayer.addEventListener('loadstart', () => {
+                    this.showLoading(true);
+                });
+                
+                this.audioPlayer.addEventListener('canplay', () => {
+                    this.showLoading(false);
+                    this.playBtn.disabled = false;
+                });
+                
+                this.audioPlayer.addEventListener('error', (e) => {
+                    this.showLoading(false);
+                    this.showError('Failed to load audio stream');
+                    console.error('Audio error:', e);
+                });
+                
+                this.audioPlayer.addEventListener('ended', () => {
+                    this.isPlaying = false;
+                    this.updatePlayButton();
+                });
+            }
+            
+            async loadRoomData() {
+                try {
+                    const response = await fetch(`/api/rooms/${this.roomId}`);
+                    if (!response.ok) {
+                        throw new Error('Room not found');
+                    }
+                    
+                    const room = await response.json();
+                    this.roomTitle.textContent = room.title;
+                    
+                    // Get stream URL
+                    await this.loadStreamUrl();
+                    
+                } catch (error) {
+                    this.showError('Failed to load room data');
+                    console.error('Error loading room:', error);
+                }
+            }
+            
+            async loadStreamUrl() {
+                try {
+                    const response = await fetch(`/api/room/${this.roomId}/stream-url`);
+                    if (!response.ok) {
+                        throw new Error('Failed to get stream URL');
+                    }
+                    
+                    const data = await response.json();
+                    this.streamUrl = data.hls_url;
+                    
+                    if (data.is_active) {
+                        this.initializePlayer();
+                    }
+                    
+                } catch (error) {
+                    this.showError('Failed to load stream URL');
+                    console.error('Error loading stream URL:', error);
+                }
+            }
+            
+            async checkStreamStatus() {
+                try {
+                    const response = await fetch(`/api/room/${this.roomId}/stream-url`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.updateStreamStatus(data.is_active);
+                        
+                        if (data.is_active && !this.hls) {
+                            this.initializePlayer();
+                        } else if (!data.is_active && this.hls) {
+                            this.destroyPlayer();
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking stream status:', error);
+                }
+            }
+            
+            updateStreamStatus(isLive) {
+                if (isLive) {
+                    this.statusElement.className = 'status live';
+                    this.statusText.textContent = '🔴 LIVE';
+                } else {
+                    this.statusElement.className = 'status offline';
+                    this.statusText.textContent = '⚫ OFFLINE';
+                }
+            }
+            
+            initializePlayer() {
+                if (this.hls) {
+                    this.destroyPlayer();
+                }
+                
+                // Check if HLS is supported
+                if (Hls.isSupported()) {
+                    this.hls = new Hls({
+                        liveSyncDurationCount: 3,
+                        liveMaxLatencyDurationCount: 5,
+                        maxBufferLength: 10,
+                        maxMaxBufferLength: 20,
+                    });
+                    
+                    this.hls.loadSource(this.streamUrl);
+                    this.hls.attachMedia(this.audioPlayer);
+                    
+                    this.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        console.log('HLS manifest loaded');
+                        this.playBtn.disabled = false;
+                    });
+                    
+                    this.hls.on(Hls.Events.ERROR, (event, data) => {
+                        console.error('HLS error:', data);
+                        if (data.fatal) {
+                            this.showError('Stream connection failed');
+                            this.destroyPlayer();
+                        }
+                    });
+                    
+                } else if (this.audioPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari)
+                    this.audioPlayer.src = this.streamUrl;
+                    this.playBtn.disabled = false;
+                } else {
+                    this.showError('HLS not supported in this browser');
+                }
+            }
+            
+            destroyPlayer() {
+                if (this.hls) {
+                    this.hls.destroy();
+                    this.hls = null;
+                }
+                this.audioPlayer.src = '';
+                this.isPlaying = false;
+                this.updatePlayButton();
+                this.playBtn.disabled = true;
+            }
+            
+            async togglePlay() {
+                if (this.isPlaying) {
+                    this.audioPlayer.pause();
+                    this.isPlaying = false;
+                } else {
+                    try {
+                        await this.audioPlayer.play();
+                        this.isPlaying = true;
+                    } catch (error) {
+                        console.error('Play error:', error);
+                        this.showError('Failed to start playback');
+                    }
+                }
+                this.updatePlayButton();
+            }
+            
+            updatePlayButton() {
+                this.playIcon.textContent = this.isPlaying ? '⏸' : '▶';
+            }
+            
+            showLoading(show) {
+                this.loading.style.display = show ? 'block' : 'none';
+            }
+            
+            showError(message) {
+                this.errorMessage.textContent = message;
+                this.errorMessage.style.display = 'block';
+                setTimeout(() => {
+                    this.errorMessage.style.display = 'none';
+                }, 5000);
+            }
+        }
+        
+        // Initialize the player when the page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            new AudioStreamPlayer();
+        });
+    </script>
+</body>
+</html>
